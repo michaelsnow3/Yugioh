@@ -29,31 +29,24 @@ function key(...parts: (string | number)[]) {
   return parts.join(":");
 }
 
-// Generic stylized card back (not the licensed Konami artwork) - a rotated
-// diamond emblem on a dark gradient. `sideways` renders it as it would
-// appear rotated for a defense-position monster.
+const CARD_BACK_URL = "https://ms.yugipedia.com//thumb/e/e5/Back-EN.png/257px-Back-EN.png";
+
+// `sideways` renders it as it would appear rotated for a defense-position
+// monster.
 function CardBack({ sideways }: { sideways?: boolean }) {
-  const face = (
-    <div className="flex h-full w-full items-center justify-center rounded border border-yellow-700/40">
-      <div className="h-2/5 w-2/5 rotate-45 rounded-sm border-2 border-yellow-600/60 bg-gradient-to-br from-yellow-900/30 to-transparent" />
-    </div>
-  );
+  const img = <img src={CARD_BACK_URL} alt="Face-down card" className="h-full w-full rounded object-cover" />;
 
   if (sideways) {
     return (
       <div className="relative aspect-[86/59] w-full">
-        <div className="absolute left-1/2 top-1/2 aspect-[59/86] h-[169%] -translate-x-1/2 -translate-y-1/2 rotate-90 rounded border-2 border-yellow-700/70 bg-gradient-to-br from-indigo-950 via-purple-950 to-gray-950 p-1">
-          {face}
+        <div className="absolute left-1/2 top-1/2 aspect-[59/86] h-[169%] -translate-x-1/2 -translate-y-1/2 rotate-90">
+          {img}
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="aspect-[59/86] w-full rounded border-2 border-yellow-700/70 bg-gradient-to-br from-indigo-950 via-purple-950 to-gray-950 p-1">
-      {face}
-    </div>
-  );
+  return <div className="aspect-[59/86] w-full">{img}</div>;
 }
 
 function ActionableCard({
@@ -74,29 +67,66 @@ function ActionableCard({
   actions: CardAction[];
 }) {
   return (
+    <>
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        className="relative cursor-pointer overflow-visible rounded-lg border border-gray-800"
+      >
+        {faceDown ? (
+          <CardBack sideways={sideways} />
+        ) : card.imageUrl ? (
+          <img src={card.imageUrl} alt={card.name} className="w-full rounded-lg" />
+        ) : (
+          <div className="flex aspect-[59/86] w-full items-center justify-center rounded-lg bg-gray-900 p-1 text-center text-[9px] text-gray-400">
+            {card.name}
+          </div>
+        )}
+        {quantity !== undefined && quantity > 1 && (
+          <span className="absolute bottom-0.5 right-0.5 rounded bg-black/80 px-1 text-[9px] font-bold">
+            x{quantity}
+          </span>
+        )}
+      </div>
+      {selected && <CardActionMenu card={card} actions={actions} onClose={onSelect} />}
+    </>
+  );
+}
+
+function CardActionMenu({
+  card,
+  actions,
+  onClose,
+}: {
+  card: CardRef;
+  actions: CardAction[];
+  onClose: () => void;
+}) {
+  return (
     <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       onClick={(e) => {
         e.stopPropagation();
-        onSelect();
+        onClose();
       }}
-      className="relative cursor-pointer overflow-visible rounded-lg border border-gray-800"
     >
-      {faceDown ? (
-        <CardBack sideways={sideways} />
-      ) : card.imageUrl ? (
-        <img src={card.imageUrl} alt={card.name} className="w-full rounded-lg" />
-      ) : (
-        <div className="flex aspect-[59/86] w-full items-center justify-center rounded-lg bg-gray-900 p-1 text-center text-[9px] text-gray-400">
-          {card.name}
+      <div
+        className="w-full max-w-xs rounded-xl border border-gray-700 bg-gray-900 p-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center gap-3">
+          {card.imageUrl ? (
+            <img src={card.imageUrl} alt={card.name} className="w-16 flex-shrink-0 rounded-lg" />
+          ) : (
+            <div className="flex aspect-[59/86] w-16 flex-shrink-0 items-center justify-center rounded-lg bg-gray-800 text-center text-[9px] text-gray-400">
+              {card.name}
+            </div>
+          )}
+          <span className="text-base font-semibold leading-snug">{card.name}</span>
         </div>
-      )}
-      {quantity !== undefined && quantity > 1 && (
-        <span className="absolute bottom-0.5 right-0.5 rounded bg-black/80 px-1 text-[9px] font-bold">
-          x{quantity}
-        </span>
-      )}
-      {selected && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-black/85 p-1">
+        <div className="flex flex-col gap-2">
           {actions.map((a) => (
             <button
               key={a.label}
@@ -105,7 +135,7 @@ function ActionableCard({
                 e.stopPropagation();
                 a.onClick();
               }}
-              className={`w-full rounded px-1 py-0.5 text-[10px] font-semibold text-white ${
+              className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white ${
                 a.danger ? "bg-red-600 hover:bg-red-500" : "bg-gray-700 hover:bg-gray-600"
               }`}
             >
@@ -113,7 +143,7 @@ function ActionableCard({
             </button>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -679,34 +709,29 @@ function ZoneSlot({
 
   if (readOnly) {
     return (
-      <div
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect();
-        }}
-        className="relative cursor-pointer overflow-hidden rounded-lg border border-gray-800"
-      >
-        <img src={card.imageUrl ?? undefined} alt={card.name} className="w-full" />
-        {position && (
-          <span className="absolute bottom-0.5 left-0.5 rounded bg-black/80 px-1 text-[8px] font-bold">
-            {position}
-          </span>
-        )}
+      <>
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+          }}
+          className="relative cursor-pointer overflow-hidden rounded-lg border border-gray-800"
+        >
+          <img src={card.imageUrl ?? undefined} alt={card.name} className="w-full" />
+          {position && (
+            <span className="absolute bottom-0.5 left-0.5 rounded bg-black/80 px-1 text-[8px] font-bold">
+              {position}
+            </span>
+          )}
+        </div>
         {selected && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/85 p-1">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewCard(card);
-              }}
-              className="w-full rounded bg-gray-700 px-1 py-0.5 text-[10px] font-semibold hover:bg-gray-600"
-            >
-              View Card
-            </button>
-          </div>
+          <CardActionMenu
+            card={card}
+            actions={[{ label: "View Card", onClick: () => onViewCard(card) }]}
+            onClose={onSelect}
+          />
         )}
-      </div>
+      </>
     );
   }
 
