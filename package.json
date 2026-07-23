@@ -2,6 +2,9 @@
   "name": "yugioh",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "react-router build",
     "dev": "react-router dev",
