@@ -1,0 +1,37 @@
+{
+  "name": "yugioh",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc",
+    "duel-server": "tsx server/standalone.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6",
+    "@react-router/node": "^7.18.1",
+    "@react-router/serve": "^7.18.1",
+    "isbot": "^5.1.36",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router": "^7.18.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "tsx": "^4.23.1",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7.18.1",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "^22",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "prisma": "^6",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.9.3",
+    "vite": "^6",
+    "vite-tsconfig-paths": "^6.1.1"
+  }
+}
