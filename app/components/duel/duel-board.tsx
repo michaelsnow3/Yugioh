@@ -29,10 +29,29 @@ function key(...parts: (string | number)[]) {
   return parts.join(":");
 }
 
-function CardBack({ label }: { label?: string }) {
+// Generic stylized card back (not the licensed Konami artwork) - a rotated
+// diamond emblem on a dark gradient. `sideways` renders it as it would
+// appear rotated for a defense-position monster.
+function CardBack({ sideways }: { sideways?: boolean }) {
+  const face = (
+    <div className="flex h-full w-full items-center justify-center rounded border border-yellow-700/40">
+      <div className="h-2/5 w-2/5 rotate-45 rounded-sm border-2 border-yellow-600/60 bg-gradient-to-br from-yellow-900/30 to-transparent" />
+    </div>
+  );
+
+  if (sideways) {
+    return (
+      <div className="relative aspect-[86/59] w-full">
+        <div className="absolute left-1/2 top-1/2 aspect-[59/86] h-[169%] -translate-x-1/2 -translate-y-1/2 rotate-90 rounded border-2 border-yellow-700/70 bg-gradient-to-br from-indigo-950 via-purple-950 to-gray-950 p-1">
+          {face}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex aspect-[59/86] w-full items-center justify-center rounded-lg border border-indigo-900 bg-gradient-to-br from-indigo-950 to-gray-900 text-center text-[10px] font-semibold text-indigo-400">
-      {label ?? "Duel Arena"}
+    <div className="aspect-[59/86] w-full rounded border-2 border-yellow-700/70 bg-gradient-to-br from-indigo-950 via-purple-950 to-gray-950 p-1">
+      {face}
     </div>
   );
 }
@@ -40,14 +59,16 @@ function CardBack({ label }: { label?: string }) {
 function ActionableCard({
   card,
   quantity,
-  faceDownBadge,
+  faceDown,
+  sideways,
   selected,
   onSelect,
   actions,
 }: {
   card: CardRef;
   quantity?: number;
-  faceDownBadge?: boolean;
+  faceDown?: boolean;
+  sideways?: boolean;
   selected: boolean;
   onSelect: () => void;
   actions: CardAction[];
@@ -58,27 +79,24 @@ function ActionableCard({
         e.stopPropagation();
         onSelect();
       }}
-      className="relative cursor-pointer overflow-hidden rounded-lg border border-gray-800"
+      className="relative cursor-pointer overflow-visible rounded-lg border border-gray-800"
     >
-      {card.imageUrl ? (
-        <img src={card.imageUrl} alt={card.name} className="w-full" />
+      {faceDown ? (
+        <CardBack sideways={sideways} />
+      ) : card.imageUrl ? (
+        <img src={card.imageUrl} alt={card.name} className="w-full rounded-lg" />
       ) : (
-        <div className="flex aspect-[59/86] w-full items-center justify-center bg-gray-900 p-1 text-center text-[10px] text-gray-400">
+        <div className="flex aspect-[59/86] w-full items-center justify-center rounded-lg bg-gray-900 p-1 text-center text-[9px] text-gray-400">
           {card.name}
         </div>
       )}
-      {faceDownBadge && (
-        <span className="absolute left-1 top-1 rounded bg-indigo-950/90 px-1 text-[9px] font-bold text-indigo-300">
-          FACE-DOWN
-        </span>
-      )}
       {quantity !== undefined && quantity > 1 && (
-        <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 text-[10px] font-bold">
+        <span className="absolute bottom-0.5 right-0.5 rounded bg-black/80 px-1 text-[9px] font-bold">
           x{quantity}
         </span>
       )}
       {selected && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/85 p-1">
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-black/85 p-1">
           {actions.map((a) => (
             <button
               key={a.label}
@@ -87,7 +105,7 @@ function ActionableCard({
                 e.stopPropagation();
                 a.onClick();
               }}
-              className={`w-full rounded px-1.5 py-1 text-[11px] font-semibold text-white ${
+              className={`w-full rounded px-1 py-0.5 text-[10px] font-semibold text-white ${
                 a.danger ? "bg-red-600 hover:bg-red-500" : "bg-gray-700 hover:bg-gray-600"
               }`}
             >
@@ -168,12 +186,14 @@ export function DuelBoard({ duel, code }: DuelBoardProps) {
 
   const self = duel.self;
   const opponent = duel.opponent;
-  const selfHand = self.hand as CardRef[];
   const selfExtraDeck = self.extraDeck as CardRef[];
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white" onClick={closeAllMenus}>
-      <main className="mx-auto max-w-6xl px-4 py-6">
+    <div
+      className="flex h-dvh flex-col overflow-hidden bg-gray-950 text-white"
+      onClick={closeAllMenus}
+    >
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-2 overflow-hidden px-3 py-2">
         <OpponentRow
           opponent={opponent}
           selected={selected}
@@ -182,7 +202,7 @@ export function DuelBoard({ duel, code }: DuelBoardProps) {
           onOpenGraveyard={() => setGraveyardView("opponent")}
         />
 
-        <div className="my-6 border-t border-dashed border-gray-800" />
+        <div className="border-t border-dashed border-gray-800" />
 
         <SelfRow
           self={self}
@@ -405,16 +425,20 @@ function SideZoneTile({
         onClick?.();
       }}
       disabled={!onClick}
-      className={`flex w-20 flex-col items-center gap-1 rounded-lg border p-2 text-center ${
+      className={`flex w-12 flex-col items-center gap-0.5 rounded border p-0.5 text-center ${
         onClick ? "cursor-pointer border-gray-700 hover:bg-gray-800" : "cursor-default border-gray-800"
       } ${glow ? "ring-1 ring-indigo-700" : ""}`}
     >
-      <div className="flex aspect-[59/86] w-full items-center justify-center rounded bg-gradient-to-br from-gray-800 to-gray-900 text-lg font-bold text-gray-400">
+      <div className="flex aspect-[59/86] w-full items-center justify-center rounded bg-gradient-to-br from-gray-800 to-gray-900 text-xs font-bold text-gray-400">
         {count}
       </div>
-      <span className="text-[10px] uppercase tracking-wide text-gray-400">{label}</span>
+      <span className="text-[7px] uppercase tracking-wide text-gray-500">{label}</span>
     </button>
   );
+}
+
+function SideColumn({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-shrink-0 flex-col justify-center gap-1">{children}</div>;
 }
 
 function OpponentRow({
@@ -435,50 +459,51 @@ function OpponentRow({
 
   return (
     <section>
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold">{opponent.playerName}</h2>
-        <span className="text-xs text-gray-500">{opponent.deckName}</span>
+      <div className="flex items-center justify-between px-1">
+        <h2 className="text-sm font-bold">{opponent.playerName}</h2>
+        <span className="text-[10px] text-gray-500">
+          {opponent.deckName} &middot; Hand: {handCount}
+        </span>
       </div>
 
-      <div className="mt-3 flex items-center gap-4">
-        <SideZoneTile label="Deck" count={opponent.mainDeckCount} />
-        <SideZoneTile label="Extra" count={extraCount} />
-        <SideZoneTile label="Graveyard" count={opponent.graveyard.length} onClick={onOpenGraveyard} />
-        <SideZoneTile label="Hand" count={handCount} />
+      <div className="mt-1 flex items-stretch gap-1.5">
+        <SideColumn>
+          <SideZoneTile label="GY" count={opponent.graveyard.length} onClick={onOpenGraveyard} />
+        </SideColumn>
 
-        <div className="ml-4 grid flex-1 grid-cols-5 gap-2">
-          {opponent.spellTrapZones.map((zone, i) => (
-            <ZoneSlot
-              key={i}
-              zone={zone}
-              kind="spellTrap"
-              selected={selected === key("opp-st", i)}
-              onSelect={() => setSelected((prev) => (prev === key("opp-st", i) ? null : key("opp-st", i)))}
-              onViewCard={onViewCard}
-              readOnly
-            />
-          ))}
+        <div className="flex-1">
+          <div className="grid grid-cols-5 gap-1">
+            {opponent.spellTrapZones.map((zone, i) => (
+              <ZoneSlot
+                key={i}
+                zone={zone}
+                kind="spellTrap"
+                selected={selected === key("opp-st", i)}
+                onSelect={() => setSelected((prev) => (prev === key("opp-st", i) ? null : key("opp-st", i)))}
+                onViewCard={onViewCard}
+                readOnly
+              />
+            ))}
+          </div>
+          <div className="mt-1 grid grid-cols-5 gap-1">
+            {opponent.monsterZones.map((zone, i) => (
+              <ZoneSlot
+                key={i}
+                zone={zone}
+                kind="monster"
+                selected={selected === key("opp-mon", i)}
+                onSelect={() => setSelected((prev) => (prev === key("opp-mon", i) ? null : key("opp-mon", i)))}
+                onViewCard={onViewCard}
+                readOnly
+              />
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div className="mt-2 flex items-center gap-4">
-        <div className="w-20" />
-        <div className="w-20" />
-        <div className="w-20" />
-        <div className="w-20" />
-        <div className="ml-4 grid flex-1 grid-cols-5 gap-2">
-          {opponent.monsterZones.map((zone, i) => (
-            <ZoneSlot
-              key={i}
-              zone={zone}
-              kind="monster"
-              selected={selected === key("opp-mon", i)}
-              onSelect={() => setSelected((prev) => (prev === key("opp-mon", i) ? null : key("opp-mon", i)))}
-              onViewCard={onViewCard}
-              readOnly
-            />
-          ))}
-        </div>
+        <SideColumn>
+          <SideZoneTile label="Deck" count={opponent.mainDeckCount} />
+          <SideZoneTile label="Extra" count={extraCount} />
+        </SideColumn>
       </div>
     </section>
   );
@@ -507,75 +532,82 @@ function SelfRow({
 
   return (
     <section>
-      <div className="grid grid-cols-5 gap-2">
-        {self.monsterZones.map((zone, i) => (
-          <ZoneSlot
-            key={i}
-            zone={zone}
-            kind="monster"
-            selected={selected === key("self-mon", i)}
-            onSelect={() => setSelected((prev) => (prev === key("self-mon", i) ? null : key("self-mon", i)))}
-            onViewCard={onViewCard}
-            actionsFor={(z) => [
-              { label: "View Card", onClick: () => onViewCard((z as MonsterZoneCard).card) },
-              {
-                label: (z as MonsterZoneCard).position === "ATK" ? "Switch to Defense" : "Switch to Attack",
-                onClick: () => emitAction({ type: "SWITCH_MONSTER_POSITION", zoneIndex: i }),
-              },
-              {
-                label: "Send to Graveyard",
-                onClick: () => emitAction({ type: "SEND_MONSTER_TO_GY", zoneIndex: i }),
-                danger: true,
-              },
-            ]}
-          />
-        ))}
+      <div className="flex items-stretch gap-1.5">
+        <SideColumn>
+          <SideZoneTile label="GY" count={self.graveyard.length} onClick={onOpenGraveyard} />
+        </SideColumn>
+
+        <div className="flex-1">
+          <div className="grid grid-cols-5 gap-1">
+            {self.monsterZones.map((zone, i) => (
+              <ZoneSlot
+                key={i}
+                zone={zone}
+                kind="monster"
+                selected={selected === key("self-mon", i)}
+                onSelect={() => setSelected((prev) => (prev === key("self-mon", i) ? null : key("self-mon", i)))}
+                onViewCard={onViewCard}
+                actionsFor={(z) => [
+                  { label: "View Card", onClick: () => onViewCard((z as MonsterZoneCard).card) },
+                  {
+                    label: (z as MonsterZoneCard).position === "ATK" ? "Switch to Defense" : "Switch to Attack",
+                    onClick: () => emitAction({ type: "SWITCH_MONSTER_POSITION", zoneIndex: i }),
+                  },
+                  {
+                    label: "Send to Graveyard",
+                    onClick: () => emitAction({ type: "SEND_MONSTER_TO_GY", zoneIndex: i }),
+                    danger: true,
+                  },
+                ]}
+              />
+            ))}
+          </div>
+
+          <div className="mt-1 grid grid-cols-5 gap-1">
+            {self.spellTrapZones.map((zone, i) => (
+              <ZoneSlot
+                key={i}
+                zone={zone}
+                kind="spellTrap"
+                selected={selected === key("self-st", i)}
+                onSelect={() => setSelected((prev) => (prev === key("self-st", i) ? null : key("self-st", i)))}
+                onViewCard={onViewCard}
+                actionsFor={(z) => {
+                  const zone = z as SpellTrapZoneCard;
+                  const actions: CardAction[] = [{ label: "View Card", onClick: () => onViewCard(zone.card) }];
+                  if (zone.faceDown) {
+                    actions.push({
+                      label: "Activate",
+                      onClick: () => emitAction({ type: "ACTIVATE_SET_SPELL_TRAP", zoneIndex: i }),
+                    });
+                  }
+                  actions.push({
+                    label: "Send to Graveyard",
+                    onClick: () => emitAction({ type: "SEND_SPELL_TRAP_TO_GY", zoneIndex: i }),
+                    danger: true,
+                  });
+                  return actions;
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <SideColumn>
+          <SideZoneTile label="Deck" count={self.mainDeckCount} onClick={onOpenDeckMenu} glow />
+          <SideZoneTile label="Extra" count={(self.extraDeck as CardRef[]).length} onClick={onOpenExtraDeck} />
+        </SideColumn>
       </div>
 
-      <div className="mt-2 grid grid-cols-5 gap-2">
-        {self.spellTrapZones.map((zone, i) => (
-          <ZoneSlot
-            key={i}
-            zone={zone}
-            kind="spellTrap"
-            selected={selected === key("self-st", i)}
-            onSelect={() => setSelected((prev) => (prev === key("self-st", i) ? null : key("self-st", i)))}
-            onViewCard={onViewCard}
-            actionsFor={(z) => {
-              const zone = z as SpellTrapZoneCard;
-              const actions: CardAction[] = [{ label: "View Card", onClick: () => onViewCard(zone.card) }];
-              if (zone.faceDown) {
-                actions.push({
-                  label: "Activate",
-                  onClick: () => emitAction({ type: "ACTIVATE_SET_SPELL_TRAP", zoneIndex: i }),
-                });
-              }
-              actions.push({
-                label: "Send to Graveyard",
-                onClick: () => emitAction({ type: "SEND_SPELL_TRAP_TO_GY", zoneIndex: i }),
-                danger: true,
-              });
-              return actions;
-            }}
-          />
-        ))}
-      </div>
-
-      <div className="mt-4 flex items-center gap-4">
-        <SideZoneTile label="Deck" count={self.mainDeckCount} onClick={onOpenDeckMenu} glow />
-        <SideZoneTile label="Extra" count={(self.extraDeck as CardRef[]).length} onClick={onOpenExtraDeck} />
-        <SideZoneTile label="Graveyard" count={self.graveyard.length} onClick={onOpenGraveyard} />
-      </div>
-
-      <div className="mt-4">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <div className="mt-1.5 px-1">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
           Your Hand ({hand.length})
         </h3>
-        <ul className="mt-2 flex flex-wrap gap-2">
+        <ul className="mt-1 flex flex-wrap gap-1">
           {hand.map((card) => {
             const monster = isMonsterFrameType(card.frameType);
             return (
-              <li key={card.instanceId} className="w-20">
+              <li key={card.instanceId} className="w-12">
                 <ActionableCard
                   card={card}
                   selected={selected === key("hand", card.instanceId)}
@@ -637,7 +669,8 @@ function ZoneSlot({
   }
 
   if ("hidden" in zone) {
-    return <CardBack label={kind === "monster" ? "Set Monster" : "Set"} />;
+    // Every face-down monster is, by construction, in defense position.
+    return <CardBack sideways={kind === "monster"} />;
   }
 
   const card = zone.card;
@@ -655,7 +688,7 @@ function ZoneSlot({
       >
         <img src={card.imageUrl ?? undefined} alt={card.name} className="w-full" />
         {position && (
-          <span className="absolute bottom-1 left-1 rounded bg-black/80 px-1 text-[9px] font-bold">
+          <span className="absolute bottom-0.5 left-0.5 rounded bg-black/80 px-1 text-[8px] font-bold">
             {position}
           </span>
         )}
@@ -667,7 +700,7 @@ function ZoneSlot({
                 e.stopPropagation();
                 onViewCard(card);
               }}
-              className="w-full rounded bg-gray-700 px-1.5 py-1 text-[11px] font-semibold hover:bg-gray-600"
+              className="w-full rounded bg-gray-700 px-1 py-0.5 text-[10px] font-semibold hover:bg-gray-600"
             >
               View Card
             </button>
@@ -681,13 +714,14 @@ function ZoneSlot({
     <div className="relative">
       <ActionableCard
         card={card}
-        faceDownBadge={faceDown}
+        faceDown={faceDown}
+        sideways={faceDown && kind === "monster"}
         selected={selected}
         onSelect={onSelect}
         actions={actionsFor ? actionsFor(zone) : []}
       />
-      {position && (
-        <span className="absolute bottom-1 left-1 rounded bg-black/80 px-1 text-[9px] font-bold">{position}</span>
+      {position && !faceDown && (
+        <span className="absolute bottom-0.5 left-0.5 rounded bg-black/80 px-1 text-[8px] font-bold">{position}</span>
       )}
     </div>
   );

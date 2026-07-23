@@ -10,9 +10,7 @@ const port = Number(process.env.PORT) || 3001;
 
 const httpServer = createServer((_req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end(
-    `Duel Arena socket server is running.\nALLOWED_ORIGIN=${JSON.stringify(process.env.ALLOWED_ORIGIN)}\n`
-  );
+  res.end("Duel Arena socket server is running.\n");
 });
 
 attachSocketServer(httpServer);
