@@ -7,13 +7,15 @@
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
-    "duel-server": "tsx server/standalone.ts"
+    "duel-server": "tsx server/standalone.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^6",
     "@react-router/node": "^7.18.1",
     "@react-router/serve": "^7.18.1",
     "isbot": "^5.1.36",
+    "prisma": "^6",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router": "^7.18.1",
@@ -28,7 +30,6 @@
     "@types/node": "^22",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "prisma": "^6",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
     "vite": "^6",
