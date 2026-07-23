@@ -31,17 +31,27 @@ export interface PlayerBoardView {
   deckName: string;
   isSelf: boolean;
   mainDeckCount: number;
+  lifePoints: number;
   hand: CardRef[] | number;
+  handRevealed: boolean;
   extraDeck: CardRef[] | number;
   graveyard: CardRef[];
+  banished: CardRef[];
   monsterZones: (MonsterZoneCard | HiddenCard | null)[];
   spellTrapZones: (SpellTrapZoneCard | HiddenCard | null)[];
+}
+
+export interface DuelFinishedInfo {
+  winnerId: string;
+  reason: "lifePoints" | "concede";
 }
 
 export interface DuelStateView {
   roomCode: string;
   self: PlayerBoardView;
   opponent: PlayerBoardView;
+  finished: DuelFinishedInfo | null;
+  rematchReady: { self: boolean; opponent: boolean };
 }
 
 export interface RoomPlayerView {
@@ -78,6 +88,19 @@ export type DuelActionPayload =
   | { type: "ACTIVATE_SET_SPELL_TRAP"; zoneIndex: number }
   | { type: "SEND_SPELL_TRAP_TO_GY"; zoneIndex: number }
   | { type: "GRAVEYARD_TO_HAND"; instanceId: string }
-  | { type: "GRAVEYARD_TO_DECK"; instanceId: string };
+  | { type: "GRAVEYARD_TO_DECK"; instanceId: string }
+  | { type: "BANISH_FROM_GRAVEYARD"; instanceId: string }
+  | { type: "SUMMON_TOKEN"; position: "ATK" | "DEF" }
+  | { type: "TOGGLE_REVEAL_HAND" }
+  | { type: "ROLL_DICE" }
+  | { type: "FLIP_COIN" }
+  | { type: "ADJUST_LIFE_POINTS"; amount: number }
+  | { type: "CONCEDE" };
+
+// Ephemeral, non-state-mutating broadcasts (shown as a toast to both
+// players) that ride alongside a regular action's room:state update.
+export type DuelEvent =
+  | { type: "DICE_ROLL"; playerId: string; playerName: string; value: number }
+  | { type: "COIN_FLIP"; playerId: string; playerName: string; result: "Heads" | "Tails" };
 
 export const ZONE_COUNT = 5;

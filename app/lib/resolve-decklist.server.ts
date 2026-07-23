@@ -1,4 +1,5 @@
 import { isExtraDeckCard } from "./card-sections";
+import { db } from "./db.server";
 import { parseDecklist } from "./decklist.server";
 import { fetchCardsByIds, fetchCardsByNames, type YgoCard } from "./ygoprodeck.server";
 
@@ -64,4 +65,26 @@ export function toDeckCardInput(cards: ResolvedDeckCard[]) {
     section,
     quantity,
   }));
+}
+
+// A deck's cards count as owned, so every deck-creation flow (Deck Builder's
+// upload, the draft-starter, etc.) should feed them into the player's
+// library too - they can then be swapped in/out of any deck.
+export async function addCardsToLibrary(playerId: string, cards: ResolvedDeckCard[]) {
+  await Promise.all(
+    cards.map((card) =>
+      db.libraryCard.upsert({
+        where: { playerId_cardId: { playerId, cardId: card.cardId } },
+        create: {
+          playerId,
+          cardId: card.cardId,
+          name: card.name,
+          imageUrl: card.imageUrl,
+          frameType: card.frameType,
+          quantity: card.quantity,
+        },
+        update: { quantity: { increment: card.quantity } },
+      })
+    )
+  );
 }

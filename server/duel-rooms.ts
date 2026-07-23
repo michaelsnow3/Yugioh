@@ -1,6 +1,7 @@
 import type {
   CardRef,
   DuelActionPayload,
+  DuelEvent,
   DuelStateView,
   MonsterZoneCard,
   PlayerBoardView,
@@ -33,10 +34,13 @@ interface DuelPlayer {
   playerId: string;
   playerName: string;
   deckName: string;
+  lifePoints: number;
   mainDeck: CardRef[];
   extraDeck: CardRef[];
   hand: CardRef[];
   graveyard: CardRef[];
+  banished: CardRef[];
+  handRevealed: boolean;
   monsterZones: (MonsterZoneCard | null)[];
   spellTrapZones: (SpellTrapZoneCard | null)[];
 }
@@ -47,6 +51,8 @@ interface Room {
   phase: "lobby" | "duel";
   players: PlayerLobby[];
   duel?: Record<string, DuelPlayer>;
+  duelFinished?: { winnerId: string; reason: "lifePoints" | "concede" } | null;
+  rematchReady: Record<string, boolean>;
 }
 
 const rooms = new Map<string, Room>();
@@ -77,6 +83,7 @@ export function createRoom(playerId: string, playerName: string): Room {
     createdAt: Date.now(),
     phase: "lobby",
     players: [{ playerId, playerName, socketId: null, deckId: null, deckName: null, ready: false }],
+    rematchReady: {},
   };
   rooms.set(code, room);
   return room;
@@ -170,10 +177,13 @@ export function startDuel(code: string, decks: Record<string, DeckCardInput[]>):
       playerId: player.playerId,
       playerName: player.playerName,
       deckName: player.deckName ?? "Deck",
+      lifePoints: 8000,
       mainDeck: shuffle(expandDeckCards(cards, "MAIN")),
       extraDeck: expandDeckCards(cards, "EXTRA"),
       hand: [],
       graveyard: [],
+      banished: [],
+      handRevealed: false,
       monsterZones: Array(ZONE_COUNT).fill(null),
       spellTrapZones: Array(ZONE_COUNT).fill(null),
     };
@@ -181,7 +191,27 @@ export function startDuel(code: string, decks: Record<string, DeckCardInput[]>):
 
   room.phase = "duel";
   room.duel = duel;
+  room.duelFinished = null;
+  room.rematchReady = {};
   return room;
+}
+
+export function requestRematch(code: string, playerId: string) {
+  const room = getRoom(code);
+  if (!room) return;
+  room.rematchReady[playerId] = true;
+}
+
+export function bothRematchReady(code: string): boolean {
+  const room = getRoom(code);
+  if (!room || !room.duel) return false;
+  const ids = Object.keys(room.duel);
+  return ids.length === 2 && ids.every((id) => room.rematchReady[id]);
+}
+
+export function resetRematch(code: string) {
+  const room = getRoom(code);
+  if (room) room.rematchReady = {};
 }
 
 function firstEmptyIndex<T>(zones: (T | null)[]): number {
@@ -202,11 +232,12 @@ export function applyAction(
   code: string,
   playerId: string,
   action: DuelActionPayload
-): { ok: true; searchResult?: SearchResult } | { ok: false; error: string } {
+): { ok: true; searchResult?: SearchResult; event?: DuelEvent } | { ok: false; error: string } {
   const room = getRoom(code);
   if (!room || !room.duel) return { ok: false, error: "Duel not active." };
   const me = room.duel[playerId];
   if (!me) return { ok: false, error: "Not a player in this duel." };
+  if (room.duelFinished) return { ok: false, error: "The duel has ended." };
 
   switch (action.type) {
     case "DRAW_CARD": {
@@ -317,6 +348,63 @@ export function applyAction(
       return { ok: true };
     }
 
+    case "BANISH_FROM_GRAVEYARD": {
+      const card = takeFrom(me.graveyard, action.instanceId);
+      if (!card) return { ok: false, error: "Card not found in graveyard." };
+      me.banished.push(card);
+      return { ok: true };
+    }
+
+    case "SUMMON_TOKEN": {
+      const zoneIndex = firstEmptyIndex(me.monsterZones);
+      if (zoneIndex === -1) return { ok: false, error: "No open monster zone." };
+      const token: CardRef = {
+        instanceId: crypto.randomUUID(),
+        cardId: 0,
+        name: "Token",
+        imageUrl: null,
+        frameType: "normal",
+      };
+      me.monsterZones[zoneIndex] = { card: token, position: action.position, faceDown: false };
+      return { ok: true };
+    }
+
+    case "TOGGLE_REVEAL_HAND": {
+      me.handRevealed = !me.handRevealed;
+      return { ok: true };
+    }
+
+    case "ROLL_DICE": {
+      const value = Math.floor(Math.random() * 6) + 1;
+      return {
+        ok: true,
+        event: { type: "DICE_ROLL", playerId: me.playerId, playerName: me.playerName, value },
+      };
+    }
+
+    case "FLIP_COIN": {
+      const result = Math.random() < 0.5 ? "Heads" : "Tails";
+      return {
+        ok: true,
+        event: { type: "COIN_FLIP", playerId: me.playerId, playerName: me.playerName, result },
+      };
+    }
+
+    case "ADJUST_LIFE_POINTS": {
+      me.lifePoints += action.amount;
+      if (me.lifePoints <= 0) {
+        const opponent = Object.values(room.duel).find((p) => p.playerId !== playerId);
+        if (opponent) room.duelFinished = { winnerId: opponent.playerId, reason: "lifePoints" };
+      }
+      return { ok: true };
+    }
+
+    case "CONCEDE": {
+      const opponent = Object.values(room.duel).find((p) => p.playerId !== playerId);
+      if (opponent) room.duelFinished = { winnerId: opponent.playerId, reason: "concede" };
+      return { ok: true };
+    }
+
     default:
       return { ok: false, error: "Unknown action." };
   }
@@ -345,9 +433,12 @@ function buildBoardView(player: DuelPlayer, isSelf: boolean): PlayerBoardView {
     deckName: player.deckName,
     isSelf,
     mainDeckCount: player.mainDeck.length,
-    hand: isSelf ? player.hand : player.hand.length,
+    lifePoints: player.lifePoints,
+    hand: isSelf || player.handRevealed ? player.hand : player.hand.length,
+    handRevealed: player.handRevealed,
     extraDeck: isSelf ? player.extraDeck : player.extraDeck.length,
     graveyard: player.graveyard,
+    banished: player.banished,
     monsterZones: redactMonsterZones(player.monsterZones, isSelf),
     spellTrapZones: redactSpellTrapZones(player.spellTrapZones, isSelf),
   };
@@ -381,6 +472,11 @@ export function getRoomView(code: string, viewerPlayerId: string): RoomView | { 
         roomCode: room.code,
         self: buildBoardView(me, true),
         opponent: buildBoardView(opponentEntry, false),
+        finished: room.duelFinished ?? null,
+        rematchReady: {
+          self: !!room.rematchReady[viewerPlayerId],
+          opponent: !!room.rematchReady[opponentEntry.playerId],
+        },
       };
       view.duel = duelView;
     }

@@ -7,6 +7,7 @@ import { fetchCardsByIds } from "../app/lib/ygoprodeck.server";
 import {
   applyAction,
   bothReady,
+  bothRematchReady,
   cancelRoom,
   createRoom,
   disconnectSocket,
@@ -14,6 +15,8 @@ import {
   getRoomView,
   getSocketId,
   joinRoom,
+  requestRematch,
+  resetRematch,
   setDeck,
   setReady,
   setSocket,
@@ -47,9 +50,7 @@ export function attachSocketServer(httpServer: HttpServer) {
     }
   }
 
-  async function startDuelIfBothReady(code: string) {
-    if (!bothReady(code)) return;
-
+  async function beginDuel(code: string) {
     const decks: Record<string, DeckCardInput[]> = {};
     for (const playerId of getPlayerIds(code)) {
       const roomView = getRoomView(code, playerId);
@@ -70,6 +71,11 @@ export function attachSocketServer(httpServer: HttpServer) {
     }
 
     startDuel(code, decks);
+  }
+
+  async function startDuelIfBothReady(code: string) {
+    if (!bothReady(code)) return;
+    await beginDuel(code);
   }
 
   io.on("connection", (socket) => {
@@ -147,6 +153,21 @@ export function attachSocketServer(httpServer: HttpServer) {
       cancelRoom(code);
     });
 
+    socket.on("room:rematchReady", async ({ code, playerId }: { code: string; playerId: string }) => {
+      requestRematch(code, playerId);
+      try {
+        if (bothRematchReady(code)) {
+          await beginDuel(code);
+          resetRematch(code);
+        }
+      } catch (err) {
+        console.error("Failed to start rematch for room", code, err);
+        const detail = err instanceof Error ? err.message : String(err);
+        socket.emit("room:error", `Couldn't start the rematch: ${detail}`);
+      }
+      broadcastRoom(code);
+    });
+
     socket.on(
       "duel:action",
       ({ code, playerId, action }: { code: string; playerId: string; action: DuelActionPayload }) => {
@@ -157,6 +178,9 @@ export function attachSocketServer(httpServer: HttpServer) {
         }
         if (result.searchResult) {
           socket.emit("duel:searchResult", result.searchResult);
+        }
+        if (result.event) {
+          io!.to(code).emit("duel:event", result.event);
         }
         broadcastRoom(code);
       }

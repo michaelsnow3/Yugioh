@@ -4,7 +4,7 @@ import { DecklistForm } from "../../components/decklist-form";
 import { SiteNav } from "../../components/site-nav";
 import { db } from "../../lib/db.server";
 import { requirePlayer } from "../../lib/player.server";
-import { resolveDecklist, toDeckCardInput } from "../../lib/resolve-decklist.server";
+import { addCardsToLibrary, resolveDecklist, toDeckCardInput } from "../../lib/resolve-decklist.server";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Start Your Draft Deck | Duel Arena" }];
@@ -37,24 +37,7 @@ export async function action({ request }: Route.ActionArgs) {
     data: { name, playerId: player.id, cards: { create: toDeckCardInput(cards) } },
   });
 
-  // The deck's cards count as owned for the draft, so they land in the
-  // player's library too and can later be swapped in/out of any deck.
-  await Promise.all(
-    cards.map((card) =>
-      db.libraryCard.upsert({
-        where: { playerId_cardId: { playerId: player.id, cardId: card.cardId } },
-        create: {
-          playerId: player.id,
-          cardId: card.cardId,
-          name: card.name,
-          imageUrl: card.imageUrl,
-          frameType: card.frameType,
-          quantity: card.quantity,
-        },
-        update: { quantity: { increment: card.quantity } },
-      })
-    )
-  );
+  await addCardsToLibrary(player.id, cards);
 
   const params = new URLSearchParams();
   if (unresolved.length > 0) params.set("skipped", unresolved.join(", "));

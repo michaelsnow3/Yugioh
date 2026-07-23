@@ -4,7 +4,7 @@ import { DecklistForm } from "../../components/decklist-form";
 import { SiteNav } from "../../components/site-nav";
 import { db } from "../../lib/db.server";
 import { requirePlayer } from "../../lib/player.server";
-import { resolveDecklist, toDeckCardInput } from "../../lib/resolve-decklist.server";
+import { addCardsToLibrary, resolveDecklist, toDeckCardInput } from "../../lib/resolve-decklist.server";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Upload Deck | Duel Arena" }];
@@ -36,6 +36,8 @@ export async function action({ request }: Route.ActionArgs) {
   const deck = await db.deck.create({
     data: { name, playerId: player.id, cards: { create: toDeckCardInput(cards) } },
   });
+
+  await addCardsToLibrary(player.id, cards);
 
   if (unresolved.length > 0) {
     // Deck still saved with whatever resolved; surface skipped cards via query param.

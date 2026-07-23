@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { isMonsterFrameType } from "../../lib/card-sections";
 import type {
   CardRef,
   DuelActionPayload,
+  DuelEvent,
+  DuelFinishedInfo,
   DuelStateView,
   HiddenCard,
   MonsterZoneCard,
@@ -31,22 +34,26 @@ function key(...parts: (string | number)[]) {
 
 const CARD_BACK_URL = "https://ms.yugipedia.com//thumb/e/e5/Back-EN.png/257px-Back-EN.png";
 
-// `sideways` renders it as it would appear rotated for a defense-position
-// monster.
-function CardBack({ sideways }: { sideways?: boolean }) {
-  const img = <img src={CARD_BACK_URL} alt="Face-down card" className="h-full w-full rounded object-cover" />;
+function CardBack() {
+  return <img src={CARD_BACK_URL} alt="Face-down card" className="h-full w-full rounded object-cover" />;
+}
 
+// Renders its children at the correct footprint: upright, or rotated 90deg
+// to represent a defense-position monster lying "sideways" on the field.
+// The rotated child is sized calc(100% * 86/59) tall (the exact inverse of
+// the portrait aspect ratio) so its footprint after rotation exactly fills
+// - and stays centered in - the landscape outer box.
+function CardFrame({ sideways, children }: { sideways?: boolean; children: React.ReactNode }) {
   if (sideways) {
     return (
       <div className="relative aspect-[86/59] w-full">
-        <div className="absolute left-1/2 top-1/2 aspect-[59/86] h-[169%] -translate-x-1/2 -translate-y-1/2 rotate-90">
-          {img}
+        <div className="absolute left-1/2 top-1/2 aspect-[59/86] h-[calc(100%*86/59)] -translate-x-1/2 -translate-y-1/2 rotate-90">
+          {children}
         </div>
       </div>
     );
   }
-
-  return <div className="aspect-[59/86] w-full">{img}</div>;
+  return <div className="aspect-[59/86] w-full">{children}</div>;
 }
 
 function ActionableCard({
@@ -75,15 +82,17 @@ function ActionableCard({
         }}
         className="relative cursor-pointer overflow-visible rounded-lg border border-gray-800"
       >
-        {faceDown ? (
-          <CardBack sideways={sideways} />
-        ) : card.imageUrl ? (
-          <img src={card.imageUrl} alt={card.name} className="w-full rounded-lg" />
-        ) : (
-          <div className="flex aspect-[59/86] w-full items-center justify-center rounded-lg bg-gray-900 p-1 text-center text-[9px] text-gray-400">
-            {card.name}
-          </div>
-        )}
+        <CardFrame sideways={sideways}>
+          {faceDown ? (
+            <CardBack />
+          ) : card.imageUrl ? (
+            <img src={card.imageUrl} alt={card.name} className="h-full w-full rounded-lg object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center rounded-lg bg-gray-900 p-1 text-center text-[9px] text-gray-400">
+              {card.name}
+            </div>
+          )}
+        </CardFrame>
         {quantity !== undefined && quantity > 1 && (
           <span className="absolute bottom-0.5 right-0.5 rounded bg-black/80 px-1 text-[9px] font-bold">
             x{quantity}
@@ -185,22 +194,276 @@ function ZoneModal({
   );
 }
 
+function ConfirmModal({
+  title,
+  body,
+  confirmLabel,
+  confirmClassName,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  confirmClassName: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={(e) => {
+        e.stopPropagation();
+        onCancel();
+      }}
+    >
+      <div
+        className="w-full max-w-xs rounded-xl border border-gray-700 bg-gray-900 p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="mb-2 text-base font-semibold">{title}</h3>
+        <p className="mb-4 text-sm text-gray-400">{body}</p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-lg border border-gray-700 px-3 py-2 text-sm font-semibold hover:bg-gray-800"
+          >
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold text-white ${confirmClassName}`}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LifePointsModal({
+  mode,
+  onClose,
+  onConfirm,
+}: {
+  mode: "add" | "subtract";
+  onClose: () => void;
+  onConfirm: (amount: number) => void;
+}) {
+  const [value, setValue] = useState("");
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-xs rounded-xl border border-gray-700 bg-gray-900 p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="mb-3 text-base font-semibold">{mode === "add" ? "Add Life Points" : "Subtract Life Points"}</h3>
+        <input
+          type="number"
+          min="0"
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Amount"
+          className="mb-4 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-white outline-none focus:border-indigo-500"
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-gray-700 px-3 py-2 text-sm font-semibold hover:bg-gray-800"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const amount = Number(value);
+              if (amount > 0) onConfirm(mode === "add" ? amount : -amount);
+              onClose();
+            }}
+            className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold text-white ${
+              mode === "add" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-red-600 hover:bg-red-500"
+            }`}
+          >
+            {mode === "add" ? "Add" : "Subtract"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VictoryDefeatOverlay({
+  finished,
+  isWinner,
+  rematchReady,
+  onRematch,
+  onHome,
+}: {
+  finished: DuelFinishedInfo;
+  isWinner: boolean;
+  rematchReady: { self: boolean; opponent: boolean };
+  onRematch: () => void;
+  onHome: () => void;
+}) {
+  const reasonText =
+    finished.reason === "concede"
+      ? isWinner
+        ? "Your opponent conceded."
+        : "You conceded."
+      : isWinner
+        ? "Your opponent's life points hit zero."
+        : "Your life points hit zero.";
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-4 bg-black/95 p-6 text-center">
+      <h1 className={`text-5xl font-black ${isWinner ? "text-emerald-400" : "text-red-500"}`}>
+        {isWinner ? "Victory!" : "Defeat"}
+      </h1>
+      <p className="text-gray-400">{reasonText}</p>
+      <div className="mt-4 flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={onRematch}
+          disabled={rematchReady.self}
+          className="rounded-lg bg-indigo-600 px-6 py-3 font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+        >
+          {rematchReady.self ? "Waiting for opponent..." : "Ready for Rematch"}
+        </button>
+        {rematchReady.opponent && !rematchReady.self && (
+          <p className="text-sm text-amber-300">Your opponent is ready for a rematch!</p>
+        )}
+        <button
+          type="button"
+          onClick={onHome}
+          className="rounded-lg border border-gray-700 px-6 py-3 font-semibold text-gray-200 hover:bg-gray-800"
+        >
+          Back to Home
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function UtilityToolbar({
+  onRollDice,
+  onFlipCoin,
+  onOpenTokenMenu,
+  onToggleReveal,
+  revealActive,
+  onConcede,
+}: {
+  onRollDice: () => void;
+  onFlipCoin: () => void;
+  onOpenTokenMenu: () => void;
+  onToggleReveal: () => void;
+  revealActive: boolean;
+  onConcede: () => void;
+}) {
+  return (
+    <div className="flex flex-shrink-0 flex-col items-center justify-center gap-2">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRollDice();
+        }}
+        title="Roll a six-sided die"
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 text-lg hover:bg-gray-800"
+      >
+        🎲
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onFlipCoin();
+        }}
+        title="Flip a coin"
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 text-lg hover:bg-gray-800"
+      >
+        🪙
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenTokenMenu();
+        }}
+        title="Summon a token"
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 text-lg hover:bg-gray-800"
+      >
+        🃏
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleReveal();
+        }}
+        title={revealActive ? "Your hand is revealed - click to hide it again" : "Reveal your hand to your opponent"}
+        className={`flex h-10 w-10 items-center justify-center rounded-lg border text-lg ${
+          revealActive
+            ? "border-amber-500 bg-amber-900/50 text-amber-300 ring-2 ring-amber-500"
+            : "border-gray-700 bg-gray-900 hover:bg-gray-800"
+        }`}
+      >
+        👁
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onConcede();
+        }}
+        title="Concede the duel"
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 text-lg hover:bg-red-950"
+      >
+        🏳️
+      </button>
+    </div>
+  );
+}
+
 export function DuelBoard({ duel, code }: DuelBoardProps) {
+  const navigate = useNavigate();
   const [selected, setSelected] = useState<SelectedKey>(null);
   const [viewingCard, setViewingCard] = useState<{ cardId: number; name: string } | null>(null);
   const [deckMenuOpen, setDeckMenuOpen] = useState(false);
   const [searchCards, setSearchCards] = useState<CardRef[] | null>(null);
   const [extraDeckOpen, setExtraDeckOpen] = useState(false);
   const [graveyardView, setGraveyardView] = useState<"self" | "opponent" | null>(null);
+  const [banishedView, setBanishedView] = useState<"self" | "opponent" | null>(null);
+  const [tokenMenuOpen, setTokenMenuOpen] = useState(false);
+  const [revealConfirmOpen, setRevealConfirmOpen] = useState(false);
+  const [concedeConfirmOpen, setConcedeConfirmOpen] = useState(false);
+  const [lifeModal, setLifeModal] = useState<"add" | "subtract" | null>(null);
+  const [eventToast, setEventToast] = useState<string | null>(null);
 
   useEffect(() => {
     const socket = getSocket();
     function onSearchResult(result: { cards: CardRef[] }) {
       setSearchCards(result.cards);
     }
+    function onDuelEvent(event: DuelEvent) {
+      if (event.type === "DICE_ROLL") {
+        setEventToast(`🎲 ${event.playerName} rolled a ${event.value}!`);
+      } else if (event.type === "COIN_FLIP") {
+        setEventToast(`🪙 ${event.playerName} flipped ${event.result}!`);
+      }
+      setTimeout(() => setEventToast(null), 3500);
+    }
     socket.on("duel:searchResult", onSearchResult);
+    socket.on("duel:event", onDuelEvent);
     return () => {
       socket.off("duel:searchResult", onSearchResult);
+      socket.off("duel:event", onDuelEvent);
     };
   }, []);
 
@@ -212,6 +475,19 @@ export function DuelBoard({ duel, code }: DuelBoardProps) {
   function closeAllMenus() {
     setSelected(null);
     setDeckMenuOpen(false);
+    setTokenMenuOpen(false);
+  }
+
+  function handleToggleReveal() {
+    if (self.handRevealed) {
+      emitAction({ type: "TOGGLE_REVEAL_HAND" });
+    } else {
+      setRevealConfirmOpen(true);
+    }
+  }
+
+  function requestRematch() {
+    getSocket().emit("room:rematchReady", { code, playerId: self.playerId });
   }
 
   const self = duel.self;
@@ -223,64 +499,160 @@ export function DuelBoard({ duel, code }: DuelBoardProps) {
       className="flex h-dvh flex-col overflow-hidden bg-gray-950 text-white"
       onClick={closeAllMenus}
     >
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-2 overflow-hidden px-3 py-2">
-        <OpponentRow
-          opponent={opponent}
-          selected={selected}
-          setSelected={setSelected}
-          onViewCard={setViewingCard}
-          onOpenGraveyard={() => setGraveyardView("opponent")}
+      <main className="mx-auto flex w-full max-w-3xl flex-1 items-center gap-2 overflow-hidden px-3 py-2">
+        <UtilityToolbar
+          onRollDice={() => emitAction({ type: "ROLL_DICE" })}
+          onFlipCoin={() => emitAction({ type: "FLIP_COIN" })}
+          onOpenTokenMenu={() => setTokenMenuOpen((v) => !v)}
+          onToggleReveal={handleToggleReveal}
+          revealActive={self.handRevealed}
+          onConcede={() => setConcedeConfirmOpen(true)}
         />
 
-        <div className="border-t border-dashed border-gray-800" />
+        <div className="flex flex-1 flex-col justify-center gap-2 overflow-hidden">
+          <OpponentRow
+            opponent={opponent}
+            selected={selected}
+            setSelected={setSelected}
+            onViewCard={setViewingCard}
+            onOpenGraveyard={() => setGraveyardView("opponent")}
+            onOpenBanished={() => setBanishedView("opponent")}
+          />
 
-        <SelfRow
-          self={self}
-          selected={selected}
-          setSelected={setSelected}
-          onViewCard={setViewingCard}
-          emitAction={emitAction}
-          onOpenDeckMenu={() => setDeckMenuOpen((v) => !v)}
-          onOpenExtraDeck={() => setExtraDeckOpen(true)}
-          onOpenGraveyard={() => setGraveyardView("self")}
-        />
+          <div className="border-t border-dashed border-gray-800" />
 
-        {deckMenuOpen && (
-          <div
-            className="fixed inset-0 z-40 flex items-center justify-center bg-black/70"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeckMenuOpen(false);
-            }}
-          >
+          <SelfRow
+            self={self}
+            selected={selected}
+            setSelected={setSelected}
+            onViewCard={setViewingCard}
+            emitAction={emitAction}
+            onOpenDeckMenu={() => setDeckMenuOpen((v) => !v)}
+            onOpenExtraDeck={() => setExtraDeckOpen(true)}
+            onOpenGraveyard={() => setGraveyardView("self")}
+            onOpenBanished={() => setBanishedView("self")}
+            onOpenLifeAdd={() => setLifeModal("add")}
+            onOpenLifeSubtract={() => setLifeModal("subtract")}
+          />
+
+          {deckMenuOpen && (
             <div
-              className="flex flex-col gap-2 rounded-xl border border-gray-800 bg-gray-900 p-4"
-              onClick={(e) => e.stopPropagation()}
+              className="fixed inset-0 z-40 flex items-center justify-center bg-black/70"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeckMenuOpen(false);
+              }}
             >
-              <button
-                type="button"
-                onClick={() => {
-                  emitAction({ type: "DRAW_CARD" });
-                  setDeckMenuOpen(false);
-                }}
-                className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold hover:bg-indigo-500"
+              <div
+                className="flex flex-col gap-2 rounded-xl border border-gray-800 bg-gray-900 p-4"
+                onClick={(e) => e.stopPropagation()}
               >
-                Draw Card
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  emitAction({ type: "SEARCH_DECK" });
-                  setDeckMenuOpen(false);
-                }}
-                className="rounded-lg border border-gray-700 px-4 py-2 font-semibold hover:bg-gray-800"
-              >
-                Search Deck
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    emitAction({ type: "DRAW_CARD" });
+                    setDeckMenuOpen(false);
+                  }}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold hover:bg-indigo-500"
+                >
+                  Draw Card
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    emitAction({ type: "SEARCH_DECK" });
+                    setDeckMenuOpen(false);
+                  }}
+                  className="rounded-lg border border-gray-700 px-4 py-2 font-semibold hover:bg-gray-800"
+                >
+                  Search Deck
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {tokenMenuOpen && (
+            <div
+              className="fixed inset-0 z-40 flex items-center justify-center bg-black/70"
+              onClick={(e) => {
+                e.stopPropagation();
+                setTokenMenuOpen(false);
+              }}
+            >
+              <div
+                className="flex flex-col gap-2 rounded-xl border border-gray-800 bg-gray-900 p-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="mb-1 text-center text-sm font-semibold text-gray-300">Summon Token</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    emitAction({ type: "SUMMON_TOKEN", position: "ATK" });
+                    setTokenMenuOpen(false);
+                  }}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold hover:bg-indigo-500"
+                >
+                  Attack Position
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    emitAction({ type: "SUMMON_TOKEN", position: "DEF" });
+                    setTokenMenuOpen(false);
+                  }}
+                  className="rounded-lg border border-gray-700 px-4 py-2 font-semibold hover:bg-gray-800"
+                >
+                  Defense Position
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </main>
+
+      {eventToast && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center">
+          <div className="rounded-full border border-indigo-600 bg-gray-900/95 px-4 py-1.5 text-sm font-semibold text-indigo-200 shadow-lg">
+            {eventToast}
+          </div>
+        </div>
+      )}
+
+      {revealConfirmOpen && (
+        <ConfirmModal
+          title="Reveal your hand?"
+          body="Your opponent will be able to see every card in your hand until you turn this off again."
+          confirmLabel="Reveal Hand"
+          confirmClassName="bg-amber-600 hover:bg-amber-500"
+          onCancel={() => setRevealConfirmOpen(false)}
+          onConfirm={() => {
+            emitAction({ type: "TOGGLE_REVEAL_HAND" });
+            setRevealConfirmOpen(false);
+          }}
+        />
+      )}
+
+      {concedeConfirmOpen && (
+        <ConfirmModal
+          title="Concede the duel?"
+          body="You will immediately lose this duel."
+          confirmLabel="Concede"
+          confirmClassName="bg-red-600 hover:bg-red-500"
+          onCancel={() => setConcedeConfirmOpen(false)}
+          onConfirm={() => {
+            emitAction({ type: "CONCEDE" });
+            setConcedeConfirmOpen(false);
+          }}
+        />
+      )}
+
+      {lifeModal && (
+        <LifePointsModal
+          mode={lifeModal}
+          onClose={() => setLifeModal(null)}
+          onConfirm={(amount) => emitAction({ type: "ADJUST_LIFE_POINTS", amount })}
+        />
+      )}
 
       <CardImageModal card={viewingCard} onClose={() => setViewingCard(null)} />
 
@@ -377,6 +749,27 @@ export function DuelBoard({ duel, code }: DuelBoardProps) {
           onClose={() => setGraveyardView(null)}
         />
       )}
+
+      {banishedView && (
+        <BanishedModalContent
+          isSelf={banishedView === "self"}
+          cards={banishedView === "self" ? self.banished : opponent.banished}
+          selected={selected}
+          setSelected={setSelected}
+          onViewCard={setViewingCard}
+          onClose={() => setBanishedView(null)}
+        />
+      )}
+
+      {duel.finished && (
+        <VictoryDefeatOverlay
+          finished={duel.finished}
+          isWinner={duel.finished.winnerId === self.playerId}
+          rematchReady={duel.rematchReady}
+          onRematch={requestRematch}
+          onHome={() => navigate("/")}
+        />
+      )}
     </div>
   );
 }
@@ -424,9 +817,54 @@ function GraveyardModalContent({
                           label: "Put in Deck",
                           onClick: () => emitAction({ type: "GRAVEYARD_TO_DECK", instanceId: card.instanceId }),
                         },
+                        {
+                          label: "Banish",
+                          onClick: () => emitAction({ type: "BANISH_FROM_GRAVEYARD", instanceId: card.instanceId }),
+                        },
                       ]
                     : [{ label: "View Card", onClick: () => onViewCard(card) }]
                 }
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </ZoneModal>
+  );
+}
+
+function BanishedModalContent({
+  isSelf,
+  cards,
+  selected,
+  setSelected,
+  onViewCard,
+  onClose,
+}: {
+  isSelf: boolean;
+  cards: CardRef[];
+  selected: SelectedKey;
+  setSelected: (fn: (prev: SelectedKey) => SelectedKey) => void;
+  onViewCard: (card: { cardId: number; name: string }) => void;
+  onClose: () => void;
+}) {
+  return (
+    <ZoneModal title={`${isSelf ? "Your" : "Opponent's"} Banished Cards (${cards.length})`} onClose={onClose}>
+      {cards.length === 0 ? (
+        <p className="mt-4 text-gray-500">Empty.</p>
+      ) : (
+        <ul className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-6">
+          {cards.map((card) => (
+            <li key={card.instanceId}>
+              <ActionableCard
+                card={card}
+                selected={selected === key("banished", card.instanceId)}
+                onSelect={() =>
+                  setSelected((prev) =>
+                    prev === key("banished", card.instanceId) ? null : key("banished", card.instanceId)
+                  )
+                }
+                actions={[{ label: "View Card", onClick: () => onViewCard(card) }]}
               />
             </li>
           ))}
@@ -467,8 +905,84 @@ function SideZoneTile({
   );
 }
 
+function DeckTile({ count, onClick, glow }: { count: number; onClick?: () => void; glow?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick?.();
+      }}
+      disabled={!onClick}
+      className={`flex w-12 flex-col items-center gap-0.5 rounded border p-0.5 text-center ${
+        onClick ? "cursor-pointer border-gray-700 hover:bg-gray-800" : "cursor-default border-gray-800"
+      } ${glow ? "ring-1 ring-indigo-700" : ""}`}
+    >
+      <div className="relative aspect-[59/86] w-full overflow-hidden rounded">
+        {count > 0 ? (
+          <>
+            <CardBack />
+            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 rounded bg-white px-1 text-[9px] font-bold text-gray-900">
+              {count}
+            </span>
+          </>
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900 text-xs font-bold text-gray-400">
+            0
+          </div>
+        )}
+      </div>
+      <span className="text-[7px] uppercase tracking-wide text-gray-500">Deck</span>
+    </button>
+  );
+}
+
+function GraveyardTile({ cards, onClick }: { cards: CardRef[]; onClick: () => void }) {
+  const topCard = cards[cards.length - 1];
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="flex w-12 cursor-pointer flex-col items-center gap-0.5 rounded border border-gray-700 p-0.5 text-center hover:bg-gray-800"
+    >
+      <div className="relative aspect-[59/86] w-full overflow-hidden rounded">
+        {topCard ? (
+          <>
+            {topCard.imageUrl ? (
+              <img src={topCard.imageUrl} alt={topCard.name} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-gray-900 p-1 text-center text-[8px] text-gray-400">
+                {topCard.name}
+              </div>
+            )}
+            <span className="absolute bottom-0.5 right-0.5 rounded bg-black/80 px-1 text-[8px] font-bold text-white">
+              {cards.length}
+            </span>
+          </>
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900 text-xs font-bold text-gray-400">
+            0
+          </div>
+        )}
+      </div>
+      <span className="text-[7px] uppercase tracking-wide text-gray-500">GY</span>
+    </button>
+  );
+}
+
 function SideColumn({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-shrink-0 flex-col justify-center gap-1">{children}</div>;
+}
+
+function LifePointsControl({ value }: { value: number }) {
+  return (
+    <span className="rounded border border-gray-700 bg-gray-900 px-1.5 py-0.5 text-[11px] font-bold tabular-nums">
+      {value} LP
+    </span>
+  );
 }
 
 function OpponentRow({
@@ -477,32 +991,59 @@ function OpponentRow({
   setSelected,
   onViewCard,
   onOpenGraveyard,
+  onOpenBanished,
 }: {
   opponent: PlayerBoardView;
   selected: SelectedKey;
   setSelected: (fn: (prev: SelectedKey) => SelectedKey) => void;
   onViewCard: (card: { cardId: number; name: string }) => void;
   onOpenGraveyard: () => void;
+  onOpenBanished: () => void;
 }) {
-  const handCount = opponent.hand as number;
   const extraCount = opponent.extraDeck as number;
+  const handRevealed = Array.isArray(opponent.hand);
+  const handCards = handRevealed ? (opponent.hand as CardRef[]) : null;
+  const handCount = handCards ? handCards.length : (opponent.hand as number);
 
   return (
     <section>
       <div className="flex items-center justify-between px-1">
         <h2 className="text-sm font-bold">{opponent.playerName}</h2>
-        <span className="text-[10px] text-gray-500">
-          {opponent.deckName} &middot; Hand: {handCount}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1.5 text-[10px] text-gray-500">
+            {opponent.deckName} &middot; Hand: {handCount}
+            {handRevealed && (
+              <span className="rounded bg-amber-900/60 px-1 py-0.5 font-semibold text-amber-300">Hand Revealed</span>
+            )}
+          </span>
+          <LifePointsControl value={opponent.lifePoints} />
+        </div>
       </div>
 
-      <div className="mt-1 flex items-stretch gap-1.5">
+      <ul className="mt-0.5 flex flex-wrap gap-0.5 px-1">
+        {handCards
+          ? handCards.map((card) => (
+              <li key={card.instanceId} className="w-8">
+                <img src={card.imageUrl ?? undefined} alt={card.name} className="w-full rounded" />
+              </li>
+            ))
+          : Array.from({ length: handCount }).map((_, i) => (
+              <li key={i} className="w-8">
+                <CardFrame>
+                  <CardBack />
+                </CardFrame>
+              </li>
+            ))}
+      </ul>
+
+      <div className="mt-1 flex items-stretch gap-2">
         <SideColumn>
-          <SideZoneTile label="GY" count={opponent.graveyard.length} onClick={onOpenGraveyard} />
+          <GraveyardTile cards={opponent.graveyard} onClick={onOpenGraveyard} />
+          <SideZoneTile label="Banish" count={opponent.banished.length} onClick={onOpenBanished} />
         </SideColumn>
 
         <div className="flex-1">
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid grid-cols-5 gap-1.5">
             {opponent.spellTrapZones.map((zone, i) => (
               <ZoneSlot
                 key={i}
@@ -515,7 +1056,7 @@ function OpponentRow({
               />
             ))}
           </div>
-          <div className="mt-1 grid grid-cols-5 gap-1">
+          <div className="mt-1.5 grid grid-cols-5 gap-1.5">
             {opponent.monsterZones.map((zone, i) => (
               <ZoneSlot
                 key={i}
@@ -531,7 +1072,7 @@ function OpponentRow({
         </div>
 
         <SideColumn>
-          <SideZoneTile label="Deck" count={opponent.mainDeckCount} />
+          <DeckTile count={opponent.mainDeckCount} />
           <SideZoneTile label="Extra" count={extraCount} />
         </SideColumn>
       </div>
@@ -548,6 +1089,9 @@ function SelfRow({
   onOpenDeckMenu,
   onOpenExtraDeck,
   onOpenGraveyard,
+  onOpenBanished,
+  onOpenLifeAdd,
+  onOpenLifeSubtract,
 }: {
   self: PlayerBoardView;
   selected: SelectedKey;
@@ -557,18 +1101,46 @@ function SelfRow({
   onOpenDeckMenu: () => void;
   onOpenExtraDeck: () => void;
   onOpenGraveyard: () => void;
+  onOpenBanished: () => void;
+  onOpenLifeAdd: () => void;
+  onOpenLifeSubtract: () => void;
 }) {
   const hand = self.hand as CardRef[];
 
   return (
     <section>
-      <div className="flex items-stretch gap-1.5">
+      <div className="flex items-center justify-end gap-1 px-1">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenLifeSubtract();
+          }}
+          className="flex h-5 w-5 items-center justify-center rounded bg-red-700 text-xs font-bold hover:bg-red-600"
+        >
+          −
+        </button>
+        <LifePointsControl value={self.lifePoints} />
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenLifeAdd();
+          }}
+          className="flex h-5 w-5 items-center justify-center rounded bg-emerald-700 text-xs font-bold hover:bg-emerald-600"
+        >
+          +
+        </button>
+      </div>
+
+      <div className="mt-1 flex items-stretch gap-2">
         <SideColumn>
-          <SideZoneTile label="GY" count={self.graveyard.length} onClick={onOpenGraveyard} />
+          <GraveyardTile cards={self.graveyard} onClick={onOpenGraveyard} />
+          <SideZoneTile label="Banish" count={self.banished.length} onClick={onOpenBanished} />
         </SideColumn>
 
         <div className="flex-1">
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid grid-cols-5 gap-1.5">
             {self.monsterZones.map((zone, i) => (
               <ZoneSlot
                 key={i}
@@ -593,7 +1165,7 @@ function SelfRow({
             ))}
           </div>
 
-          <div className="mt-1 grid grid-cols-5 gap-1">
+          <div className="mt-1.5 grid grid-cols-5 gap-1.5">
             {self.spellTrapZones.map((zone, i) => (
               <ZoneSlot
                 key={i}
@@ -624,7 +1196,7 @@ function SelfRow({
         </div>
 
         <SideColumn>
-          <SideZoneTile label="Deck" count={self.mainDeckCount} onClick={onOpenDeckMenu} glow />
+          <DeckTile count={self.mainDeckCount} onClick={onOpenDeckMenu} glow />
           <SideZoneTile label="Extra" count={(self.extraDeck as CardRef[]).length} onClick={onOpenExtraDeck} />
         </SideColumn>
       </div>
@@ -700,12 +1272,17 @@ function ZoneSlot({
 
   if ("hidden" in zone) {
     // Every face-down monster is, by construction, in defense position.
-    return <CardBack sideways={kind === "monster"} />;
+    return (
+      <CardFrame sideways={kind === "monster"}>
+        <CardBack />
+      </CardFrame>
+    );
   }
 
   const card = zone.card;
   const faceDown = "faceDown" in zone && zone.faceDown;
   const position = "position" in zone ? zone.position : undefined;
+  const sideways = kind === "monster" && position === "DEF";
 
   if (readOnly) {
     return (
@@ -717,7 +1294,9 @@ function ZoneSlot({
           }}
           className="relative cursor-pointer overflow-hidden rounded-lg border border-gray-800"
         >
-          <img src={card.imageUrl ?? undefined} alt={card.name} className="w-full" />
+          <CardFrame sideways={sideways}>
+            <img src={card.imageUrl ?? undefined} alt={card.name} className="h-full w-full rounded-lg object-cover" />
+          </CardFrame>
           {position && (
             <span className="absolute bottom-0.5 left-0.5 rounded bg-black/80 px-1 text-[8px] font-bold">
               {position}
@@ -740,12 +1319,12 @@ function ZoneSlot({
       <ActionableCard
         card={card}
         faceDown={faceDown}
-        sideways={faceDown && kind === "monster"}
+        sideways={sideways}
         selected={selected}
         onSelect={onSelect}
         actions={actionsFor ? actionsFor(zone) : []}
       />
-      {position && !faceDown && (
+      {position && (
         <span className="absolute bottom-0.5 left-0.5 rounded bg-black/80 px-1 text-[8px] font-bold">{position}</span>
       )}
     </div>
