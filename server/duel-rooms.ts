@@ -247,6 +247,11 @@ export function applyAction(
       return { ok: true };
     }
 
+    case "SHUFFLE_DECK": {
+      me.mainDeck = shuffle(me.mainDeck);
+      return { ok: true };
+    }
+
     case "SEARCH_DECK": {
       return { ok: true, searchResult: { cards: me.mainDeck } };
     }

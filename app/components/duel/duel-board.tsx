@@ -567,6 +567,16 @@ export function DuelBoard({ duel, code }: DuelBoardProps) {
                 >
                   Search Deck
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    emitAction({ type: "SHUFFLE_DECK" });
+                    setDeckMenuOpen(false);
+                  }}
+                  className="rounded-lg border border-gray-700 px-4 py-2 font-semibold hover:bg-gray-800"
+                >
+                  Shuffle Deck
+                </button>
               </div>
             </div>
           )}

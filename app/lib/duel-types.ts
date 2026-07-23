@@ -75,6 +75,7 @@ export type ZoneSource = "hand" | "extraDeck";
 
 export type DuelActionPayload =
   | { type: "DRAW_CARD" }
+  | { type: "SHUFFLE_DECK" }
   | { type: "SEARCH_DECK" }
   | { type: "SEARCH_ADD_TO_HAND"; instanceId: string }
   | { type: "SEARCH_ADD_TO_GRAVEYARD"; instanceId: string }
