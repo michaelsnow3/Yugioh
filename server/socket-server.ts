@@ -131,7 +131,12 @@ export function attachSocketServer(httpServer: HttpServer) {
       "room:ready",
       async ({ code, playerId, ready }: { code: string; playerId: string; ready: boolean }) => {
         setReady(code, playerId, ready);
-        await startDuelIfBothReady(code);
+        try {
+          await startDuelIfBothReady(code);
+        } catch (err) {
+          console.error("Failed to start duel for room", code, err);
+          socket.emit("room:error", "Couldn't start the duel - please try again.");
+        }
         broadcastRoom(code);
       }
     );
