@@ -135,7 +135,8 @@ export function attachSocketServer(httpServer: HttpServer) {
           await startDuelIfBothReady(code);
         } catch (err) {
           console.error("Failed to start duel for room", code, err);
-          socket.emit("room:error", "Couldn't start the duel - please try again.");
+          const detail = err instanceof Error ? err.message : String(err);
+          socket.emit("room:error", `Couldn't start the duel: ${detail}`);
         }
         broadcastRoom(code);
       }
